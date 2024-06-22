@@ -15,8 +15,9 @@ broadcast_t = None
 def signal_handler(sig, frame):
     print('\nReceived SIGINT (Ctrl+C). Shutting down the server...')
     for process in client_processes:
-        process.terminate()
-        print("Client process closed.")
+        if process.is_alive():
+            process.terminate()
+            print("Client process closed.")
     if server:
         server.close()
         print("Server closed.")
@@ -100,7 +101,6 @@ def broadcaster(client_socket, user_id, receiver_id, shutdown_flag, messages):
 
 def handle_client(client_socket):
     try:
-        pid = multiprocessing.current_process().pid
         while True:
             login_or_register = receive_message(client_socket)
             if not login_or_register:
@@ -219,8 +219,6 @@ def handle_client(client_socket):
     finally:
         if client_socket:
             client_socket.close()
-        if pid in client_processes:
-            del_process(pid)
 
 def del_process(pid):
     for process in client_processes:
@@ -237,6 +235,7 @@ def save_message(message, sender_id, receiver_id):
 
 def start_server():
     global server
+    global client_processes
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(('172.20.10.9', 5555))
     server.listen(10)
@@ -246,10 +245,9 @@ def start_server():
         try:
             client_socket, client_address = server.accept()
             print(f"Connection from {client_address}")
-
             client_process = multiprocessing.Process(target=handle_client, args=(client_socket,))
-            client_process.start()
             client_processes.append(client_process)
+            client_process.start()
         except Exception as e:
             print(f"Error: {e}")
         
