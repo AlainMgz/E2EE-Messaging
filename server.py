@@ -8,23 +8,14 @@ import threading
 import time
 import select
 
-server = None
-client_processes = []
 shutdown_flag = threading.Event()
-broadcast_t = None
+MAX_CONNECTIONS = 100
 
 class ConnectionClosedError(Exception):
     pass
 
 def signal_handler(sig, frame):
     print('\nReceived SIGINT (Ctrl+C). Shutting down the server...')
-    for process in client_processes:
-        if process.is_alive():
-            process.terminate()
-            print("Client process closed.")
-    if server:
-        server.close()
-        print("Server closed.")
     sys.exit(0)
 
 def hash_password(password):
@@ -32,7 +23,6 @@ def hash_password(password):
     hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
     return hashed
 
-# Initialize SQLite database
 conn = sqlite3.connect('e2e.db', check_same_thread=False)
 cursor = conn.cursor()
 cursor.execute('PRAGMA foreign_keys = ON;')
@@ -101,7 +91,7 @@ def receive_message_with_to(sock, timeout=5):
 
 def broadcaster(client_socket, user_id, receiver_id, shutdown_flag, messages):
     try:
-        conn = sqlite3.connect('e2e_app.db', check_same_thread=False)
+        conn = sqlite3.connect('e2e.db', check_same_thread=False)
         cursor = conn.cursor()
         while not shutdown_flag.is_set():
             sql = """
@@ -120,7 +110,7 @@ def broadcaster(client_socket, user_id, receiver_id, shutdown_flag, messages):
                 for message in new_messages:
                     send_message(client_socket, message[1])
                     messages.add(message)
-            time.sleep(0.25 if not new_messages else 0)
+            time.sleep(0.1 if not new_messages else 0)
 
     except (BrokenPipeError, ConnectionResetError):
         pass
@@ -229,7 +219,6 @@ def handle_client(client_socket):
                         send_message(client_socket, str(len(messages)))
                         for message in messages:
                             send_message(client_socket, message[1])
-                        global broadcast_t
                         broadcast_t = threading.Thread(target=broadcaster, args=(client_socket, user_id, receiver_id[0], shutdown_flag, set(messages)))
                         broadcast_t.start()
                         i = 5
@@ -314,26 +303,35 @@ def handle_client(client_socket):
         print("Connection closed.")
         
 
-
-
-
 def start_server():
-    global server
-    global client_processes
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(('192.168.0.12', 5555))
     server.listen(10)
     print("Server started and listening...")
+    client_processes = []
 
-    while True:
-        try:
+    try:
+        while True:
             client_socket, client_address = server.accept()
+            if len(client_processes) >= MAX_CONNECTIONS:
+                print("Maximum number of connections reached.")
+                client_socket.close()
+                continue
+            client_processes = [process for process in client_processes if process.is_alive()]
             print(f"Connection from {client_address}")
             client_process = multiprocessing.Process(target=handle_client, args=(client_socket,))
             client_processes.append(client_process)
             client_process.start()
-        except Exception as e:
-            print(f"Error: {e}")
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        for process in client_processes:
+            if process.is_alive():
+                process.terminate()
+                print("Client process closed.")
+        if server:
+            server.close()
+            print("Server closed.")
         
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
