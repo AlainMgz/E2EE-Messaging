@@ -1,6 +1,9 @@
 # MacOS files
 .DS_Store
 
+# DB File
+e2e.db
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

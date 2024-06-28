@@ -54,16 +54,28 @@ def receive_message_with_error_code(sock):
     return message, error_code
 
 def listener(sock, i_ctr):
-    while not shutdown_flag.is_set():
-        ready_to_read, _, _ = select.select([sock], [], [], 2)
-        if ready_to_read:
-            i_ctr += 1
-            stdscr.addstr(i_ctr, 2, receive_message(sock))
-            stdscr.move(height - 2, len("Enter your message: ") + 2)
-            stdscr.refresh()
-            
-        else:
-            continue
+    try:
+        while not shutdown_flag.is_set():
+            ready_to_read, _, _ = select.select([sock], [], [], 2)
+            if ready_to_read:
+                i_ctr += 1
+                stdscr.addstr(i_ctr, 2, receive_message(sock))
+                stdscr.move(height - 2, len("Enter your message: ") + 2)
+                stdscr.refresh()
+                
+            else:
+                continue
+    except (BrokenPipeError, ConnectionResetError):
+        stdscr.clear()
+        stdscr.addstr(2, 2, "The connection has been closed by the server.")
+        stdscr.refresh()
+        input_curses("Press Enter to exit...")
+    except Exception as e:
+        stdscr.clear()
+        stdscr.addstr(2, 2, f"An error occurred. Verify your connection and try again. {e}")
+        stdscr.refresh()
+        input_curses("Press Enter to exit...")
+
 
 def input_curses(input_desc):
     #stdscr.clear()
@@ -92,7 +104,11 @@ def input_curses(input_desc):
 def enter(sock):
     try:
         while True:
-            choice = input_curses("Login (1), Register (2) or Exit (3): ")
+            choice = input_curses("Login (1) or Register (2): ")
+            if choice == 'exit':
+                break
+            if choice == '..':
+                continue
             stdscr.refresh()
             send_message(sock, choice)
             response = receive_message_with_error_code(sock)
@@ -108,6 +124,8 @@ def enter(sock):
                     username = input_curses("Username: ")
                     send_message(sock, username)
                     if username == 'exit':
+                        exit()
+                    if username == '..':
                         continue
                     response = receive_message_with_error_code(sock)
                     if response[1] != 0:
@@ -116,7 +134,9 @@ def enter(sock):
 
                     password = input_curses("Password: ")
                     if password == 'exit':
-                        send_message(sock, password)
+                        exit()
+                    if password == '..':
+                        send_message(sock, '..')
                         continue
                     send_message(sock, hash_data_sha3_512(password))
                     response = receive_message_with_error_code(sock)
@@ -125,7 +145,6 @@ def enter(sock):
                         continue
 
                     response = receive_message_with_error_code(sock)
-
                     
                     if response[1] != 0:
                         stdscr.addstr(2, 2, response[0])
@@ -137,6 +156,8 @@ def enter(sock):
                         receiver = input_curses("Enter the username of the user you want to communicate with: ")
                         send_message(sock, receiver)
                         if receiver == 'exit':
+                            exit()
+                        if receiver == '..':
                             break
                         response = receive_message_with_error_code(sock)
                         if response[1] != 0:
@@ -148,8 +169,8 @@ def enter(sock):
                         stdscr.clear()
                         stdscr.addstr(1, 2, f"Chatting with {receiver}...")
                         stdscr.addstr(2, 2, "Messages:")
-                        stdscr.addstr(3, 2, "----------------------------------------")
-                        stdscr.addstr(height - 3, 2, "----------------------------------------")
+                        stdscr.addstr(3, 2, "-"*message_area_width)
+                        stdscr.addstr(height - 3, 2, "-"*message_area_width)
                         stdscr.refresh()
 
                         i_ctr = 3
@@ -166,26 +187,35 @@ def enter(sock):
                             stdscr.clrtoeol()
                             msg_in = input_curses("Enter your message: ")
                             if msg_in == 'exit':
-                                send_message(sock, msg_in)
+                                stdscr.clear()
+                                stdscr.addstr(2, 2, "Exiting...")
+                                stdscr.refresh()
                                 shutdown_flag.set()
                                 listener_t.join()
+                                exit()
+                            if msg_in == '..':
+                                send_message(sock, msg_in)
                                 break
                             send_message(sock, msg_in)
-
-                            
                     
                 except (BrokenPipeError, ConnectionResetError):
                     stdscr.clear()
                     stdscr.addstr(2, 2, "The connection has been closed by the server.")
                     stdscr.refresh()
-                    input_curses("Press Enter to exit...")
+                    send_message(sock, 'exit')
+                    if listener_t:
+                        shutdown_flag.set()
+                        listener_t.join()
                     break
-                """except Exception as e:
+                except Exception:
                     stdscr.clear()
                     stdscr.addstr(2, 2, "An error occurred. Verify your connection and try again.")
                     stdscr.refresh()
-                    input_curses("Press Enter to exit...")
-                    break"""
+                    send_message(sock, 'exit')
+                    if listener_t:
+                        shutdown_flag.set()
+                        listener_t.join()
+                    break
             elif choice == 2:
                 try:
                     username = input_curses("Username: ")
@@ -205,35 +235,32 @@ def enter(sock):
                     stdscr.clear()
                     stdscr.addstr(1, 2, response)
                     stdscr.refresh()
-                    input_curses("Press Enter to continue...")
+                    input_curses("Press Enter to go back to the main menu... ")
                     stdscr.clear()
                     continue
                 except (BrokenPipeError, ConnectionResetError) as e:
                     stdscr.clear()
                     stdscr.addstr(2, 2, "The connection has been closed by the server.")
                     stdscr.refresh()
-                    input_curses("Press Enter to exit...")
                     break
                 except Exception as e:
                     stdscr.clear()
                     stdscr.addstr(2, 2, "An error occurred. Verify your connection and try again.")
                     stdscr.refresh()
-                    input_curses("Press Enter to exit...")
                     break
-            elif choice == 3:
-                break
             else:
                 continue
     except (BrokenPipeError, ConnectionResetError):
         stdscr.clear()
         stdscr.addstr(2, 2, "The connection has been closed by the server.")
         stdscr.refresh()
-        input_curses("Press Enter to exit...")
-    """except Exception as e:
+    except Exception as e:
         stdscr.clear()
         stdscr.addstr(2, 2, "An error occurred. Verify your connection and try again.")
         stdscr.refresh()
-        input_curses("Press Enter to exit...")"""
+    finally:
+        input_curses("Press Enter to exit...")
+        sock.close()
 
 def main(scr):
     global stdscr
@@ -245,7 +272,7 @@ def main(scr):
     if curses.has_colors():
         curses.start_color()
     curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLUE) # white on blue
-    server_ip = '172.20.10.9'
+    server_ip = '192.168.0.12'
     server_port = 5555       
     global client_socket 
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
