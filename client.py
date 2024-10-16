@@ -272,7 +272,7 @@ def main(scr):
     if curses.has_colors():
         curses.start_color()
     curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLUE) # white on blue
-    server_ip = '192.168.0.12'
+    server_ip = '172.20.10.2'
     server_port = 5555       
     global client_socket 
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
